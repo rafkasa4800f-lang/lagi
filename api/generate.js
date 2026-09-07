@@ -5,31 +5,31 @@ const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const fontPath = path.join(process.cwd(), 'fonts', 'Caveat.ttf');
 GlobalFonts.registerFromPath(fontPath, 'Handwriting');
 
-// Pecah teks jadi baris-baris berdasarkan \n DAN auto-wrap kalau kepanjangan
-function buildLines(text, maxCharsPerLine) {
-  const rawLines = String(text ?? '').split('\n'); // <-- ini bagian "enter pakai \n"
-  const result = [];
+// Pecah teks jadi baris berdasarkan \n, lalu wrap berdasarkan LEBAR PIKSEL asli
+// (bukan jumlah karakter) supaya tiap baris konsisten mepet ke ujung kanan garis.
+function wrapTextByWidth(ctx, text, maxWidth) {
+  const paragraphs = String(text ?? '').split('\n'); // <-- ini bagian "enter pakai \n"
+  const lines = [];
 
-  for (const raw of rawLines) {
-    if (raw.length <= maxCharsPerLine) {
-      result.push(raw);
+  for (const para of paragraphs) {
+    if (para === '') {
+      lines.push('');
       continue;
     }
-    // auto-wrap per kata kalau satu baris kepanjangan untuk lebar buku
-    const words = raw.split(' ');
+    const words = para.split(' ');
     let cur = '';
     for (const w of words) {
       const candidate = cur ? cur + ' ' + w : w;
-      if (candidate.length > maxCharsPerLine) {
-        if (cur) result.push(cur);
+      if (ctx.measureText(candidate).width > maxWidth && cur) {
+        lines.push(cur);
         cur = w;
       } else {
         cur = candidate;
       }
     }
-    result.push(cur);
+    if (cur) lines.push(cur);
   }
-  return result;
+  return lines;
 }
 
 module.exports = async (req, res) => {
@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
       lineHeight = 26.6,
       fontSize = 20,
       color = '#1a1a2e',
-      maxCharsPerLine = 48,
+      maxWidth, // opsional, kalau tidak dikirim otomatis dihitung dari lebar gambar
       rotateJitter = 0.015, // sedikit kemiringan acak biar makin mirip tulisan tangan asli
     } = req.body || {};
 
@@ -74,7 +74,10 @@ module.exports = async (req, res) => {
     ctx.font = `${fontSize}px Handwriting`;
     ctx.textBaseline = 'alphabetic';
 
-    const lines = buildLines(text, maxCharsPerLine);
+    // batas kanan area tulis: dikalibrasi dari garis buku di book-blank.jpg (tepi garis ~x650)
+    const effectiveMaxWidth = maxWidth || (image.width - startX - 70);
+
+    const lines = wrapTextByWidth(ctx, text, effectiveMaxWidth);
 
     lines.forEach((line, i) => {
       const y = startY + i * lineHeight;
