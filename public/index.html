@@ -14,6 +14,12 @@
 <body>
   <h2>Demo: Nulis Otomatis di Buku</h2>
   <p><small>Pakai <code>\n</code> atau tekan Enter untuk pindah baris.</small></p>
+  <label for="canvas">Pilih buku:</label>
+  <select id="canvas">
+    <option value="1">Canvas 1</option>
+    <option value="2">Canvas 2</option>
+  </select>
+  <br /><br />
   <textarea id="text" placeholder="Contoh: opik yang foto ini coba lagi nanti&#10;baris kedua&#10;baris ketiga"></textarea>
   <br />
   <button onclick="generate()">Generate</button>
@@ -22,10 +28,11 @@
 <script>
 async function generate() {
   const text = document.getElementById('text').value;
+  const canvas = document.getElementById('canvas').value;
   const res = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text })
+    body: JSON.stringify({ text, canvas: Number(canvas) })
   });
   if (!res.ok) {
     const err = await res.json();
