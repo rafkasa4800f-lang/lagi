@@ -5,6 +5,26 @@ const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const fontPath = path.join(process.cwd(), 'fonts', 'Caveat.ttf');
 GlobalFonts.registerFromPath(fontPath, 'Handwriting');
 
+// Preset kalibrasi untuk tiap opsi canvas (posisi garis sudah diukur dari foto asli masing-masing)
+const CANVAS_PRESETS = {
+  1: {
+    file: path.join(process.cwd(), 'public', 'book-blank.jpg'),
+    startX: 108,
+    startY: 95.5,
+    lineHeight: 26.6,
+    fontSize: 20,
+    maxWidth: 542,
+  },
+  2: {
+    file: path.join(process.cwd(), 'public', 'book-blank-2.jpg'),
+    startX: 100,
+    startY: 92,
+    lineHeight: 34.3,
+    fontSize: 26,
+    maxWidth: 650,
+  },
+};
+
 // Pecah teks jadi baris berdasarkan \n, lalu wrap berdasarkan LEBAR PIKSEL asli
 // (bukan jumlah karakter) supaya tiap baris konsisten mepet ke ujung kanan garis.
 function wrapTextByWidth(ctx, text, maxWidth) {
@@ -38,7 +58,8 @@ module.exports = async (req, res) => {
       usage: 'POST JSON ke endpoint ini',
       body_contoh: {
         text: 'Baris pertama\\nBaris kedua\\nBaris ketiga',
-        catatan: 'startX/startY/lineHeight/fontSize sudah punya default yang pas untuk book-blank.jpg, tidak wajib dikirim'
+        canvas: '1 atau 2 (default 1), pilih buku kosongan mana yang dipakai',
+        catatan: 'startX/startY/lineHeight/fontSize/maxWidth sudah punya default per canvas, tidak wajib dikirim'
       }
     });
     return;
@@ -52,32 +73,34 @@ module.exports = async (req, res) => {
   try {
     const {
       text = '',
+      canvas: canvasChoice = 1,
       imageUrl,
-      // Default sudah dikalibrasi PAS ke garis buku di public/book-blank.jpg (720x1098px)
-      startX = 108,
-      startY = 95.5,
-      lineHeight = 26.6,
-      fontSize = 20,
+    } = req.body || {};
+
+    const preset = CANVAS_PRESETS[canvasChoice] || CANVAS_PRESETS[1];
+
+    const {
+      startX = preset.startX,
+      startY = preset.startY,
+      lineHeight = preset.lineHeight,
+      fontSize = preset.fontSize,
       color = '#1a1a2e',
-      maxWidth, // opsional, kalau tidak dikirim otomatis dihitung dari lebar gambar
+      maxWidth = preset.maxWidth,
       rotateJitter = 0.015, // sedikit kemiringan acak biar makin mirip tulisan tangan asli
     } = req.body || {};
 
-    const bgSource = imageUrl || path.join(process.cwd(), 'public', 'book-blank.jpg');
+    const bgSource = imageUrl || preset.file;
     const image = await loadImage(bgSource);
 
-    const canvas = createCanvas(image.width, image.height);
-    const ctx = canvas.getContext('2d');
+    const canvasEl = createCanvas(image.width, image.height);
+    const ctx = canvasEl.getContext('2d');
     ctx.drawImage(image, 0, 0);
 
     ctx.fillStyle = color;
     ctx.font = `${fontSize}px Handwriting`;
     ctx.textBaseline = 'alphabetic';
 
-    // batas kanan area tulis: dikalibrasi dari garis buku di book-blank.jpg (tepi garis ~x650)
-    const effectiveMaxWidth = maxWidth || (image.width - startX - 70);
-
-    const lines = wrapTextByWidth(ctx, text, effectiveMaxWidth);
+    const lines = wrapTextByWidth(ctx, text, maxWidth);
 
     lines.forEach((line, i) => {
       const y = startY + i * lineHeight;
@@ -95,7 +118,7 @@ module.exports = async (req, res) => {
       }
     });
 
-    const buffer = canvas.toBuffer('image/png');
+    const buffer = canvasEl.toBuffer('image/png');
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).send(buffer);
@@ -104,3 +127,4 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
